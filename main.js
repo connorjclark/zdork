@@ -35,6 +35,12 @@ function begin() {
   fetch('/wood.json');
   fetch('/wood.json');
   fetch('/wood.json');
+  for (const row of map) {
+    for (const char of row) {
+      if (char === 'x') getLabor();
+    }
+  }
+  askForMovement();
 
   const villageEl = document.querySelector('.village');
   villageEl.addEventListener('click', e => {
@@ -53,6 +59,7 @@ function buildHouse(x, y) {
   map[x][y] = 'l';
   renderVillage();
   fetch(`/build-house.json?x=${x}&y=${y}`).then((response) => {
+    getLabor();
     if (response.status === 200) {
       map[x][y] = 'x';
     } else {
@@ -75,6 +82,17 @@ function cutDownTree(x, y) {
     }
     renderVillage();
   });
+}
+
+function getLabor() {
+  fetch('/labor.json');
+}
+
+function askForMovement() {
+  fetch('/move.json?direction=up').catch(() => {});
+  fetch('/move.json?direction=right').catch(() => {});
+  fetch('/move.json?direction=down').catch(() => {});
+  fetch('/move.json?direction=left').catch(() => {});
 }
 
 function renderVillage() {

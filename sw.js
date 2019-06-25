@@ -34,12 +34,16 @@ self.addEventListener('activate', event => {
 
 const START = '/start.json';
 const BUILD_HOUSE = '/build-house.json';
+const LABOR = '/labor.json';
 const CUT_DOWN_TREE = '/cut-down-tree.json';
 const WOOD = '/wood.json';
+const MOVE = '/move.json';
 
 const pendingTasksByType = {
   [BUILD_HOUSE]: [], // only allow one task at a time.
+  [LABOR]: [],
   [CUT_DOWN_TREE]: [], // only allow one task at a time.
+  [MOVE]: [], // action, canceling network request chooses.
   [WOOD]: [], // inventory
 };
 
@@ -70,7 +74,7 @@ function finishTask(task) {
   const tasks = pendingTasksByType[task.type];
   if (tasks.length) {
     const nextTask = tasks[0];
-    setTimeout(() => finishTask(nextTask), 1000 * nextTask.duration); 
+    setTimeout(() => finishTask(nextTask), 1000 * nextTask.duration);
   }
 }
 
@@ -78,6 +82,8 @@ function getItem(type) {
   const items = pendingTasksByType[type];
   if (items.length) return items[0];
 }
+
+const position = { x: 0, y: 0 };
 
 self.addEventListener('fetch', async event => {
   if (!event.request.url.startsWith(self.location.origin)) return;
@@ -95,18 +101,45 @@ self.addEventListener('fetch', async event => {
     let timeout = 0;
     if (pathname === START) {
       // nothing ...
+    } else if (pathname === LABOR) {
+      timeout = -1;
     } else if (pathname === BUILD_HOUSE) {
       timeout = 10;
       const wood = getItem(WOOD);
-      if (wood) {
-        wood.resolve();
-      } else {
+      const labor = getItem(LABOR);
+      if (!wood) {
         response.success = false;
+        response.message = 'need wood';
+      } else if (!labor) {
+        response.success = false;
+        response.message = 'need labor';
+      } else {
+        wood.resolve();
+        labor.resolve();
       }
     } else if (pathname === CUT_DOWN_TREE) {
       timeout = 5;
     } else if (pathname === WOOD) {
       timeout = -1;
+    } else if (pathname === MOVE) {
+      switch (url.searchParams.get('direction')) {
+        case 'up':
+          position.y += 1;
+          break;
+        case 'right':
+          position.x += 1;
+          break;
+        case 'down':
+          position.y -= 1;
+          break;
+        case 'left':
+          position.x -= 1;
+          break;
+      }
+      response.position = position;
+    } else {
+      response.success = false;
+      response.message = 'unknown';
     }
 
     if (response.success) {
@@ -114,7 +147,7 @@ self.addEventListener('fetch', async event => {
         const task = createTask(pathname, timeout);
         await task.promise;
       }
-  
+
       if (timeout === -1) {
         const task = createTask(pathname, timeout);
         await task.promise; // resolves when item is used.
@@ -122,7 +155,7 @@ self.addEventListener('fetch', async event => {
     }
 
     return new Response(JSON.stringify(response), {
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       status: response.success ? 200 : 400,
     });
   })());
