@@ -32,6 +32,40 @@ self.addEventListener('activate', event => {
   );
 });
 
+// only allow one task of each type at a time.
+const pendingTasksByType = {
+  '/build-house.json': [],
+};
+
+function createTask(type, duration) {
+  let resolve;
+  const promise = new Promise(_r => resolve = _r);
+  const task = {
+    type,
+    duration,
+    promise,
+    resolve,
+  };
+  const tasks = pendingTasksByType[type];
+
+  if (!tasks.length) {
+    setTimeout(() => finishTask(task), 1000 * duration);
+  }
+
+  tasks.push(task);
+  return task;
+}
+
+function finishTask(task) {
+  task.resolve();
+  const tasks = pendingTasksByType[task.type];
+  tasks.splice(tasks.indexOf(task), 1);
+  if (tasks.length) {
+    const nextTask = tasks[0];
+    setTimeout(() => finishTask(nextTask), 1000 * nextTask.duration); 
+  }
+}
+
 self.addEventListener('fetch', async event => {
   if (!event.request.url.startsWith(self.location.origin)) return;
   const url = new URL(event.request.url);
@@ -51,7 +85,8 @@ self.addEventListener('fetch', async event => {
     }
 
     if (timeout) {
-      await new Promise(resolve => setTimeout(resolve, timeout * 1000));
+      const task = createTask(pathname, timeout);
+      await task.promise;
     }
 
     return new Response(JSON.stringify(response), {
