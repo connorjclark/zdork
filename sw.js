@@ -32,23 +32,32 @@ self.addEventListener('activate', event => {
   );
 });
 
-// only allow one task of each type at a time.
+const START = '/start.json';
+const BUILD_HOUSE = '/build-house.json';
+const CUT_DOWN_TREE = '/cut-down-tree.json';
+const WOOD = '/wood.json';
+
 const pendingTasksByType = {
-  '/build-house.json': [],
+  [BUILD_HOUSE]: [], // only allow one task at a time.
+  [CUT_DOWN_TREE]: [], // only allow one task at a time.
+  [WOOD]: [], // inventory
 };
 
 function createTask(type, duration) {
+  const tasks = pendingTasksByType[type];
+
   let resolve;
-  const promise = new Promise(_r => resolve = _r);
+  const promise = new Promise(_r => resolve = _r).then(() => {
+    tasks.splice(tasks.indexOf(task), 1);
+  });
   const task = {
     type,
     duration,
     promise,
     resolve,
   };
-  const tasks = pendingTasksByType[type];
 
-  if (!tasks.length) {
+  if (duration > 0 && !tasks.length) {
     setTimeout(() => finishTask(task), 1000 * duration);
   }
 
@@ -59,11 +68,15 @@ function createTask(type, duration) {
 function finishTask(task) {
   task.resolve();
   const tasks = pendingTasksByType[task.type];
-  tasks.splice(tasks.indexOf(task), 1);
   if (tasks.length) {
     const nextTask = tasks[0];
     setTimeout(() => finishTask(nextTask), 1000 * nextTask.duration); 
   }
+}
+
+function getItem(type) {
+  const items = pendingTasksByType[type];
+  if (items.length) return items[0];
 }
 
 self.addEventListener('fetch', async event => {
@@ -76,21 +89,41 @@ self.addEventListener('fetch', async event => {
     const cachedResponse = await caches.match(event.request);
     if (cachedResponse) return cachedResponse;
 
-    let response = {};
+    let response = {
+      success: true,
+    };
     let timeout = 0;
-    if (pathname === '/start.json') {
-      response.success = true;
-    } else if (pathname === '/build-house.json') {
+    if (pathname === START) {
+      // nothing ...
+    } else if (pathname === BUILD_HOUSE) {
       timeout = 10;
+      const wood = getItem(WOOD);
+      if (wood) {
+        wood.resolve();
+      } else {
+        response.success = false;
+      }
+    } else if (pathname === CUT_DOWN_TREE) {
+      timeout = 5;
+    } else if (pathname === WOOD) {
+      timeout = -1;
     }
 
-    if (timeout) {
-      const task = createTask(pathname, timeout);
-      await task.promise;
+    if (response.success) {
+      if (timeout > 0) {
+        const task = createTask(pathname, timeout);
+        await task.promise;
+      }
+  
+      if (timeout === -1) {
+        const task = createTask(pathname, timeout);
+        await task.promise; // resolves when item is used.
+      }
     }
 
     return new Response(JSON.stringify(response), {
-      headers: {'Content-Type': 'application/json'}
+      headers: {'Content-Type': 'application/json'},
+      status: response.success ? 200 : 400,
     });
   })());
 });

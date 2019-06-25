@@ -30,6 +30,10 @@
   background-color: blue;
 }
 
+.wood {
+  background-color: brown;
+}
+
 .danger {
   --fail-icon-url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><title>warn</title><path fill="%23C7221F" d="M2 42h44L24 4 2 42zm24-6h-4v-4h4v4zm0-8h-4v-8h4v8z"/></svg>');
   background-image: var(--fail-icon-url);
