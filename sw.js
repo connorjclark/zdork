@@ -58,55 +58,68 @@ const NETWORK_ACTIONS = {
   },
 }
 
-const pendingTasksByType = {};
-for (const type in NETWORK_ACTIONS) {
-  pendingTasksByType[type] = [];
-}
+const statesForClients = {};
+function getStateForClient(clientId) {
+  if (statesForClients[clientId]) return statesForClients[clientId];
 
-function createTask(type) {
-  const networkAction = NETWORK_ACTIONS[type];
-  const tasks = pendingTasksByType[type];
+  const pendingTasksByType = {};
+  for (const type in NETWORK_ACTIONS) {
+    pendingTasksByType[type] = [];
+  }
 
-  let resolve;
-  const promise = new Promise(_r => resolve = _r).then(() => {
-    tasks.splice(tasks.indexOf(task), 1);
-  });
-  const task = {
-    type,
-    duration: networkAction.duration,
-    promise,
-    resolve,
+  const position = { x: 0, y: 0 };
+
+  return statesForClients[clientId] = {
+    position,
+    createTask,
+    getResources,
   };
 
-  if (task.duration > 0 && !tasks.length) {
-    setTimeout(() => finishTask(task), 1000 * task.duration);
+  function createTask(type) {
+    const networkAction = NETWORK_ACTIONS[type];
+    const tasks = pendingTasksByType[type];
+
+    let resolve;
+    const promise = new Promise(_r => resolve = _r).then(() => {
+      tasks.splice(tasks.indexOf(task), 1);
+    });
+    const task = {
+      type,
+      duration: networkAction.duration,
+      promise,
+      resolve,
+    };
+
+    if (task.duration > 0 && !tasks.length) {
+      setTimeout(() => finishTask(task), 1000 * task.duration);
+    }
+
+    tasks.push(task);
+    return task;
   }
 
-  tasks.push(task);
-  return task;
-}
+  function finishTask(task) {
+    task.resolve();
+    const tasks = pendingTasksByType[task.type];
+    if (tasks.length) {
+      const nextTask = tasks[0];
+      setTimeout(() => finishTask(nextTask), 1000 * nextTask.duration);
+    }
+  }
 
-function finishTask(task) {
-  task.resolve();
-  const tasks = pendingTasksByType[task.type];
-  if (tasks.length) {
-    const nextTask = tasks[0];
-    setTimeout(() => finishTask(nextTask), 1000 * nextTask.duration);
+  function getResources(type, quantity) {
+    const items = pendingTasksByType[type];
+    if (items.length >= quantity) return items.slice(0, quantity);
   }
 }
 
-function getResources(type, quantity) {
-  const items = pendingTasksByType[type];
-  if (items.length >= quantity) return items.slice(0, quantity);
-}
-
-const position = { x: 0, y: 0 };
 
 self.addEventListener('fetch', async event => {
   if (!event.request.url.startsWith(self.location.origin)) return;
   const url = new URL(event.request.url);
   if (NEVER_CACHE.includes(url.pathname)) return;
   const type = url.pathname;
+  const state = getStateForClient(event.clientId);
 
   event.respondWith((async () => {
     const cachedResponse = await caches.match(event.request);
@@ -120,7 +133,7 @@ self.addEventListener('fetch', async event => {
     if (networkAction.requires) {
       let allResources = [];
       for (const [type, quantity] of Object.entries(networkAction.requires)) {
-        const resources = getResources(type, quantity);
+        const resources = state.getResources(type, quantity);
         if (!resources) {
           response.success = false;
           response.message = 'need ' + type;
@@ -136,23 +149,23 @@ self.addEventListener('fetch', async event => {
     if (type === MOVE) {
       switch (url.searchParams.get('direction')) {
         case 'up':
-          position.y += 1;
+          state.position.y += 1;
           break;
         case 'right':
-          position.x += 1;
+          state.position.x += 1;
           break;
         case 'down':
-          position.y -= 1;
+          state.position.y -= 1;
           break;
         case 'left':
-          position.x -= 1;
+          state.position.x -= 1;
           break;
       }
-      response.position = position;
+      response.position = state.position;
     }
 
     if (response.success && (networkAction.duration > 0 || networkAction.resource)) {
-      const task = createTask(type);
+      const task = state.createTask(type);
       await task.promise;
     }
 
