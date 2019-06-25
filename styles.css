@@ -1,0 +1,49 @@
+.container {
+  display: none;
+}
+
+.active {
+  display: block;
+}
+
+.village {
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  grid-template-rows: repeat(15, 1fr);
+}
+
+.cell {
+  margin: 0;
+  color: transparent;
+  border: dotted 1px black;
+}
+
+.loading {
+  background-color: gray;
+}
+
+.grass {
+  background-color: green;
+}
+
+.water {
+  background-color: blue;
+}
+
+.danger {
+  --fail-icon-url: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><title>warn</title><path fill="%23C7221F" d="M2 42h44L24 4 2 42zm24-6h-4v-4h4v4zm0-8h-4v-8h4v8z"/></svg>');
+  background-image: var(--fail-icon-url);
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.house {
+  position: relative;
+}
+.house:before {
+  content: '🏠';
+  color: black;
+  position: absolute;
+  left: 50%;
+  margin-left: -5px;
+}
