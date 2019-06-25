@@ -32,22 +32,39 @@ self.addEventListener('activate', event => {
   );
 });
 
-const START = '/start.json';
-const BUILD_HOUSE = '/build-house.json';
-const LABOR = '/labor.json';
-const CUT_DOWN_TREE = '/cut-down-tree.json';
-const WOOD = '/wood.json';
 const MOVE = '/move.json';
 
-const pendingTasksByType = {
-  [BUILD_HOUSE]: [], // only allow one task at a time.
-  [LABOR]: [],
-  [CUT_DOWN_TREE]: [], // only allow one task at a time.
-  [MOVE]: [], // action, canceling network request chooses.
-  [WOOD]: [], // inventory
-};
+const NETWORK_ACTIONS = {
+  '/start.json': {},
+  '/move.json': {},
+  '/labor.json': {
+    resource: true,
+  },
+  '/wood.json': {
+    resource: true,
+  },
+  '/cut-down-tree.json': {
+    duration: 5,
+    requires: {
+      '/labor.json': 1,
+    },
+  },
+  '/build-house.json': {
+    duration: 10,
+    requires: {
+      '/wood.json': 1,
+      '/labor.json': 1,
+    },
+  },
+}
 
-function createTask(type, duration) {
+const pendingTasksByType = {};
+for (const type in NETWORK_ACTIONS) {
+  pendingTasksByType[type] = [];
+}
+
+function createTask(type) {
+  const networkAction = NETWORK_ACTIONS[type];
   const tasks = pendingTasksByType[type];
 
   let resolve;
@@ -56,13 +73,13 @@ function createTask(type, duration) {
   });
   const task = {
     type,
-    duration,
+    duration: networkAction.duration,
     promise,
     resolve,
   };
 
-  if (duration > 0 && !tasks.length) {
-    setTimeout(() => finishTask(task), 1000 * duration);
+  if (task.duration > 0 && !tasks.length) {
+    setTimeout(() => finishTask(task), 1000 * task.duration);
   }
 
   tasks.push(task);
@@ -78,9 +95,9 @@ function finishTask(task) {
   }
 }
 
-function getItem(type) {
+function getResources(type, quantity) {
   const items = pendingTasksByType[type];
-  if (items.length) return items[0];
+  if (items.length >= quantity) return items.slice(0, quantity);
 }
 
 const position = { x: 0, y: 0 };
@@ -88,8 +105,8 @@ const position = { x: 0, y: 0 };
 self.addEventListener('fetch', async event => {
   if (!event.request.url.startsWith(self.location.origin)) return;
   const url = new URL(event.request.url);
-  const pathname = url.pathname;
-  if (NEVER_CACHE.includes(pathname)) return;
+  if (NEVER_CACHE.includes(url.pathname)) return;
+  const type = url.pathname;
 
   event.respondWith((async () => {
     const cachedResponse = await caches.match(event.request);
@@ -98,30 +115,25 @@ self.addEventListener('fetch', async event => {
     let response = {
       success: true,
     };
-    let timeout = 0;
-    if (pathname === START) {
-      // nothing ...
-    } else if (pathname === LABOR) {
-      timeout = -1;
-    } else if (pathname === BUILD_HOUSE) {
-      timeout = 10;
-      const wood = getItem(WOOD);
-      const labor = getItem(LABOR);
-      if (!wood) {
-        response.success = false;
-        response.message = 'need wood';
-      } else if (!labor) {
-        response.success = false;
-        response.message = 'need labor';
-      } else {
-        wood.resolve();
-        labor.resolve();
+    const networkAction = NETWORK_ACTIONS[type];
+
+    if (networkAction.requires) {
+      let allResources = [];
+      for (const [type, quantity] of Object.entries(networkAction.requires)) {
+        const resources = getResources(type, quantity);
+        if (!resources) {
+          response.success = false;
+          response.message = 'need ' + type;
+          break;
+        }
+        allResources.push(...resources);
       }
-    } else if (pathname === CUT_DOWN_TREE) {
-      timeout = 5;
-    } else if (pathname === WOOD) {
-      timeout = -1;
-    } else if (pathname === MOVE) {
+      if (response.success) {
+        allResources.forEach(resource => resource.resolve());
+      }
+    }
+
+    if (type === MOVE) {
       switch (url.searchParams.get('direction')) {
         case 'up':
           position.y += 1;
@@ -137,21 +149,11 @@ self.addEventListener('fetch', async event => {
           break;
       }
       response.position = position;
-    } else {
-      response.success = false;
-      response.message = 'unknown';
     }
 
-    if (response.success) {
-      if (timeout > 0) {
-        const task = createTask(pathname, timeout);
-        await task.promise;
-      }
-
-      if (timeout === -1) {
-        const task = createTask(pathname, timeout);
-        await task.promise; // resolves when item is used.
-      }
+    if (response.success && (networkAction.duration > 0 || networkAction.resource)) {
+      const task = createTask(type);
+      await task.promise;
     }
 
     return new Response(JSON.stringify(response), {

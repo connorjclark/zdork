@@ -59,8 +59,9 @@ function buildHouse(x, y) {
   map[x][y] = 'l';
   renderVillage();
   fetch(`/build-house.json?x=${x}&y=${y}`).then((response) => {
-    getLabor();
     if (response.status === 200) {
+      getLabor();
+      getLabor();
       map[x][y] = 'x';
     } else {
       map[x][y] = before;
@@ -75,6 +76,7 @@ function cutDownTree(x, y) {
   renderVillage();
   fetch(`/cut-down-tree.json?x=${x}&y=${y}`).then((response) => {
     if (response.status === 200) {
+      getLabor();
       map[x][y] = 'g';
       fetch('/wood.json');
     } else {
